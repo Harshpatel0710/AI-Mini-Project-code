@@ -33,7 +33,6 @@ class PersonalFinanceManager:
         if not self.expenses.empty:
             if self.model:
                 try:
-                    # ✅ FIX: Keep DataFrame instead of converting to .values
                     self.expenses["Category"] = self.model.predict(
                         self.expenses[["Description", "Amount"]].astype(str)
                     )
@@ -50,6 +49,8 @@ class PersonalFinanceManager:
         if not isinstance(desc, str):
             return "Other"
         desc = desc.lower()
+        if "salary" in desc or "income" in desc:
+            return "Income"
         if any(x in desc for x in ["zomato", "restaurant", "food"]): return "Food"
         if any(x in desc for x in ["uber", "bus", "petrol"]): return "Transport"
         if any(x in desc for x in ["amazon", "shopping"]): return "Shopping"
@@ -69,6 +70,8 @@ class PersonalFinanceManager:
             return fig
 
         category_summary = self.expenses.groupby("Category")["Amount"].sum()
+        category_summary = category_summary[~category_summary.index.str.contains("income|salary", case=False)]
+
         fig, ax = plt.subplots(figsize=(4, 4))
         category_summary.plot.pie(autopct="%1.1f%%", ax=ax)
         ax.set_ylabel("")
@@ -81,18 +84,26 @@ class PersonalFinanceManager:
 
         inc, total_exp, sav = self.summary()
         category_summary = self.expenses.groupby("Category")["Amount"].sum()
+        category_summary = category_summary[~category_summary.index.str.contains("income|salary", case=False)]
+
         text, high_spent = "📊 Monthly Expense Advisor:\n\n", False
 
         for cat, amt in category_summary.items():
-            if cat.lower() == "salary":
-                continue 
-            pct = (amt / inc) * 100 if inc else 0
-            if pct > 30: text += f"⚠️ {cat}: ₹{amt} ({pct:.1f}%) – Too High!\n"; high_spent = True
-            elif pct > 15: text += f"✔️ {cat}: ₹{amt} ({pct:.1f}%) – Moderate.\n"
-            else: text += f"✅ {cat}: ₹{amt} ({pct:.1f}%) – Well managed.\n"
+            pct = (amt / total_exp) * 100 if total_exp else 0  # ✅ percent of expenses
+            if pct > 30:
+                text += f"⚠️ {cat}: ₹{amt} ({pct:.1f}%) – Too High!\n"; high_spent = True
+            elif pct > 15:
+                text += f"✔️ {cat}: ₹{amt} ({pct:.1f}%) – Moderate.\n"
+            else:
+                text += f"✅ {cat}: ₹{amt} ({pct:.1f}%) – Well managed.\n"
 
+        text += f"\n📊 Total Reviewed Expenses: ₹{total_exp}\n"
         text += "\n" + ("⚠️ Overall: Try reducing expenses.\n" if high_spent else "✔️ Overall: Expenses under control!\n")
-        text += f"\n💡 Suggested Emergency Fund: ₹{round(sav * 0.2, 2) if sav > 0 else 0}"
+
+        # Emergency Fund based on 5% of total expenses
+        emergency_fund = round(total_exp * 0.05, 2)
+        text += f"\n⚡ Suggested Emergency Fund: ₹{emergency_fund}"
+
         return text
 
     def investment_advisor(self, savings, risk, expected_return):
@@ -154,8 +165,11 @@ class MainWindow(QWidget):
         top_layout.addWidget(expense_box)
 
         # Chart
-        chart_box = self.groupbox("Pie Chart")
+        chart_box = self.groupbox("Charts")
         self.chart_layout = QVBoxLayout(chart_box)
+        btn_layout = QHBoxLayout()
+        btn_layout.addWidget(self.button("Pie Chart", self.display_chart))
+        self.chart_layout.addLayout(btn_layout)
         top_layout.addWidget(chart_box)
 
         main_layout.addLayout(top_layout)
@@ -208,4 +222,4 @@ class MainWindow(QWidget):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     win = MainWindow(); win.show()
-    sys.exit(app.exec_())
+    sys.exit(app.exec_()) 
